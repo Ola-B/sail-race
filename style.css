@@ -1,0 +1,273 @@
+/* ====================================
+   SAILING RACE START LINE APP - STYLES
+   ==================================== */
+
+/* Global styles and reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+/* Main container - centers content and sets max width */
+.container {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    max-width: 500px;
+    width: 100%;
+    padding: 30px;
+}
+
+/* Header section styling */
+header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+header h1 {
+    font-size: 28px;
+    color: #333;
+    margin-bottom: 10px;
+}
+
+/* GPS status indicator - shows connection state */
+.gps-status {
+    font-size: 12px;
+    color: #666;
+    padding: 8px 12px;
+    background: #f0f0f0;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.gps-status.ready {
+    background: #d4edda;
+    color: #155724;
+}
+
+.gps-status.error {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.gps-status.acquiring {
+    background: #fff3cd;
+    color: #856404;
+}
+
+/* Control buttons section */
+.controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+/* Button base styles */
+.btn {
+    flex: 1;
+    min-width: 120px;
+    padding: 12px 16px;
+    font-size: 14px;
+    font-weight: bold;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    background: #667eea;
+    color: white;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+}
+
+.btn:hover:not(:disabled) {
+    background: #5568d3;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+/* Position status indicators showing which GPS positions have been captured */
+.position-status {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 25px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 6px;
+}
+
+.status-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.status-label {
+    font-size: 12px;
+    color: #666;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.status-value {
+    font-size: 11px;
+    color: #999;
+    word-break: break-all;
+    font-family: monospace;
+}
+
+.status-value.set {
+    color: #28a745;
+    font-weight: bold;
+}
+
+/* Metrics container - grid layout for displaying distance, speed, bearing, timer */
+.metrics-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 25px;
+}
+
+/* Individual metric box styling */
+.metric-box {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    border-left: 4px solid #667eea;
+    transition: all 0.3s ease;
+}
+
+.metric-box:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Distance box - spans full width and is highlighted as primary metric */
+.distance-box {
+    grid-column: 1 / -1;
+    border-left: 6px solid #ff6b6b;
+    background: linear-gradient(135deg, #fff5f5 0%, #ffe3e3 100%);
+    padding: 30px;
+    margin-bottom: 10px;
+}
+
+/* Timer box styling */
+.timer-box {
+    border-left-color: #4ecdc4;
+}
+
+/* Label for each metric (Distance, Speed, Bearing, etc.) */
+.metric-label {
+    font-size: 12px;
+    color: #666;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}
+
+/* Main value display for metrics */
+.metric-value {
+    font-size: 32px;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 4px;
+    font-family: 'Courier New', monospace;
+}
+
+.distance-box .metric-value {
+    font-size: 48px;
+    color: #ff6b6b;
+}
+
+.timer-box .metric-value {
+    color: #4ecdc4;
+}
+
+/* Unit labels (meters, knots, degrees, MM:SS) */
+.metric-unit {
+    font-size: 11px;
+    color: #999;
+    text-transform: uppercase;
+}
+
+/* Info section - debug/reference information */
+.info-section {
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    margin-top: 15px;
+    border-top: 2px solid #e9ecef;
+}
+
+.info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+}
+
+.info-label {
+    color: #666;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.info-value {
+    color: #333;
+    font-family: monospace;
+    word-break: break-all;
+}
+
+/* Responsive design for smaller screens */
+@media (max-width: 480px) {
+    .container {
+        padding: 20px;
+    }
+
+    header h1 {
+        font-size: 22px;
+    }
+
+    .controls {
+        flex-direction: column;
+    }
+
+    .btn {
+        min-width: auto;
+    }
+
+    .metrics-container {
+        grid-template-columns: 1fr;
+    }
+
+    .metric-value {
+        font-size: 24px;
+    }
+
+    .distance-box .metric-value {
+        font-size: 36px;
+    }
+}
