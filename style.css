@@ -72,10 +72,26 @@ header h1 {
 
 /* Control buttons section */
 .controls {
-    display: flex;
+    display: grid;
     gap: 10px;
     margin-bottom: 20px;
-    flex-wrap: wrap;
+}
+
+.controls-row {
+    display: grid;
+    gap: 10px;
+}
+
+.mark-controls {
+    grid-template-columns: 1fr 1fr;
+}
+
+.countdown-controls {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+.controls-row .btn {
+    min-width: 0;
 }
 
 /* Button base styles */
@@ -94,6 +110,44 @@ header h1 {
     text-transform: uppercase;
 }
 
+.control-btn {
+    min-width: 96px;
+}
+
+.mark-btn {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    min-height: 88px;
+    text-align: left;
+}
+
+.btn-title {
+    display: block;
+    line-height: 1.2;
+}
+
+.btn-meta {
+    display: block;
+    font-size: 11px;
+    font-weight: normal;
+    line-height: 1.25;
+    text-transform: none;
+    opacity: 0.95;
+    word-break: break-word;
+}
+
+.mark-btn.marked {
+    background: #28a745;
+}
+
+.mark-btn.marked:hover:not(:disabled) {
+    background: #23923d;
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.35);
+}
+
 .btn:hover:not(:disabled) {
     background: #5568d3;
     transform: translateY(-2px);
@@ -106,44 +160,57 @@ header h1 {
     opacity: 0.6;
 }
 
+.mark-btn.marked:disabled {
+    background: #28a745;
+    color: white;
+    opacity: 0.8;
+}
+
 .btn:active:not(:disabled) {
     transform: translateY(0);
 }
 
-/* Position status indicators showing which GPS positions have been captured */
-.position-status {
-    display: flex;
-    gap: 15px;
-    margin-bottom: 25px;
-    padding: 15px;
-    background: #f8f9fa;
-    border-radius: 6px;
+#startCountdownBtn {
+    background: #28a745;
 }
 
-.status-item {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+#startCountdownBtn:hover:not(:disabled) {
+    background: #23923d;
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.35);
 }
 
-.status-label {
-    font-size: 12px;
-    color: #666;
-    font-weight: bold;
-    text-transform: uppercase;
+#startCountdownBtn.stop-mode {
+    background: #dc3545;
 }
 
-.status-value {
-    font-size: 11px;
-    color: #999;
-    word-break: break-all;
-    font-family: monospace;
+#startCountdownBtn.stop-mode:hover:not(:disabled) {
+    background: #c82333;
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.35);
 }
 
-.status-value.set {
-    color: #28a745;
-    font-weight: bold;
+#syncCountdownBtn {
+    background: #fd7e14;
+}
+
+#syncCountdownBtn:hover:not(:disabled) {
+    background: #e86c08;
+    box-shadow: 0 4px 12px rgba(253, 126, 20, 0.35);
+}
+
+#resetCountdownBtn {
+    background: #dc3545;
+}
+
+#resetCountdownBtn:hover:not(:disabled) {
+    background: #c82333;
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.35);
+}
+
+#syncCountdownBtn:disabled,
+#resetCountdownBtn:disabled,
+#startCountdownBtn:disabled {
+    color: white;
+    opacity: 0.65;
 }
 
 /* Metrics container - grid layout for displaying distance, speed, bearing, timer */
@@ -184,7 +251,9 @@ header h1 {
 
 /* Timer box styling */
 .timer-box {
+    grid-column: 1 / -1;
     border-left-color: #4ecdc4;
+    margin-bottom: 10px;
 }
 
 /* Label for each metric (Distance, Speed, Bearing, etc.) */
@@ -291,12 +360,21 @@ header h1 {
         font-size: 22px;
     }
 
-    .controls {
-        flex-direction: column;
-    }
-
     .btn {
         min-width: auto;
+    }
+
+    .countdown-controls .btn {
+        padding: 11px 8px;
+        font-size: 13px;
+    }
+
+    .mark-btn {
+        min-height: 76px;
+    }
+
+    .btn-meta {
+        font-size: 10px;
     }
 
     .metrics-container {

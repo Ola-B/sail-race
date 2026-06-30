@@ -26,14 +26,20 @@ const state = {
     // Boat heading/bearing from GPS data (in degrees, 0-360)
     bearing: null,
 
-    // Timestamp when countdown was started (used to calculate elapsed time)
-    countdownStartTime: null,
+    // Remaining countdown time before start (milliseconds)
+    countdownRemainingMs: 5 * 60 * 1000,
 
-    // Whether the race countdown has been initiated
-    countdownActive: false,
+    // Whether countdown is currently running (pre-start)
+    countdownRunning: false,
+
+    // Timestamp of the last countdown tick for accurate decrementing
+    countdownLastTickTime: null,
 
     // Whether the race has officially started (countdown reached zero)
     raceStarted: false,
+
+    // Timestamp when race time started (T=0)
+    raceStartTime: null,
 
     // GPS status: 'initializing', 'acquiring', 'ready', or 'error'
     gpsStatus: 'initializing',
@@ -42,7 +48,10 @@ const state = {
     lastPositionTimestamp: null,
 
     // Geolocation watchId (needed to stop watching GPS updates)
-    watchId: null
+    watchId: null,
+
+    // Interval ID used to update countdown/elapsed timer
+    timerIntervalId: null
 };
 
 // =============================================================================
@@ -54,6 +63,8 @@ const elements = {
     markStartBoatBtn: document.getElementById('markStartBoatBtn'),
     markLineEndBtn: document.getElementById('markLineEndBtn'),
     startCountdownBtn: document.getElementById('startCountdownBtn'),
+    syncCountdownBtn: document.getElementById('syncCountdownBtn'),
+    resetCountdownBtn: document.getElementById('resetCountdownBtn'),
 
     // Status displays
     gpsStatus: document.getElementById('gpsStatus'),
@@ -80,10 +91,17 @@ function initializeApp() {
     // Attach event listeners to buttons
     elements.markStartBoatBtn.addEventListener('click', markStartBoatPosition);
     elements.markLineEndBtn.addEventListener('click', markLineEndPosition);
-    elements.startCountdownBtn.addEventListener('click', startCountdown);
+    elements.startCountdownBtn.addEventListener('click', toggleCountdown);
+    elements.syncCountdownBtn.addEventListener('click', syncCountdown);
+    elements.resetCountdownBtn.addEventListener('click', resetCountdown);
 
     // Start continuous GPS tracking
     initializeGPSTracking();
+
+    // Initialize button state before any positions have been marked
+    updatePositionStatusDisplay();
+    updateCountdownDisplay();
+    updateCountdownControls();
 
     console.log('App initialization complete');
 }
@@ -256,13 +274,11 @@ function markLineEndPosition() {
 
 // =============================================================================
 // CHECK AND ENABLE COUNTDOWN BUTTON
-// Enables the "Start Countdown" button once both startline endpoints are set
+// Keeps the countdown button available regardless of whether startline points
+// have been marked yet, so the race timer can be started immediately.
 // =============================================================================
 function checkAndEnableCountdownButton() {
-    if (state.startboat && state.lineEnd) {
-        elements.startCountdownBtn.disabled = false;
-        console.log('Both startline positions set. Countdown button enabled.');
-    }
+    updateCountdownControls();
 }
 
 // =============================================================================
@@ -309,44 +325,117 @@ function calculateDistanceToStartline() {
 }
 
 // =============================================================================
-// START COUNTDOWN FUNCTION
-// Initiates the 5-minute countdown timer
-// Records the start time and begins a timer interval that updates every 100ms
+// COUNTDOWN CONTROL HELPERS
+// Start/stop/resume timer, sync to full minute, and reset to 5:00.
 // =============================================================================
-function startCountdown() {
-    // Prevent multiple countdown starts
-    if (state.countdownActive) {
+function toggleCountdown() {
+    if (state.raceStarted) {
         return;
     }
 
-    // Record the current time as the countdown start reference
-    // Countdown will run for 5 minutes (300000 milliseconds)
-    const fiveMinutesMs = 5 * 60 * 1000;
-    state.countdownStartTime = Date.now();
-    state.countdownActive = true;
+    if (state.countdownRunning) {
+        state.countdownRunning = false;
+        state.countdownLastTickTime = null;
+        stopTimerLoop();
+        updateCountdownControls();
+        console.log('Countdown stopped.');
+        return;
+    }
 
-    // Disable the buttons during countdown
-    elements.markStartBoatBtn.disabled = true;
-    elements.markLineEndBtn.disabled = true;
-    elements.startCountdownBtn.disabled = true;
+    state.countdownRunning = true;
+    state.countdownLastTickTime = Date.now();
+    startTimerLoop();
+    updateCountdownControls();
+    console.log('Countdown started/resumed.');
+}
 
-    console.log('Countdown started. Race begins in 5 minutes.');
+function syncCountdown() {
+    if (!canSyncCountdown()) {
+        return;
+    }
 
-    // Start a timer that updates every 100ms
-    // This provides smooth countdown display without consuming too much CPU
-    const timerInterval = setInterval(() => {
+    const oneMinuteMs = 60 * 1000;
+    const roundedMs = Math.floor(state.countdownRemainingMs / oneMinuteMs) * oneMinuteMs;
+    state.countdownRemainingMs = Math.max(oneMinuteMs, roundedMs);
+
+    updateCountdownDisplay();
+    updateCountdownControls();
+    console.log('Countdown synced to nearest full minute.');
+}
+
+function resetCountdown() {
+    if (state.countdownRunning || state.raceStarted) {
+        return;
+    }
+
+    state.countdownRemainingMs = 5 * 60 * 1000;
+    state.countdownLastTickTime = null;
+
+    updateCountdownDisplay();
+    updateCountdownControls();
+    console.log('Countdown reset to 05:00.');
+}
+
+function startTimerLoop() {
+    if (state.timerIntervalId !== null) {
+        return;
+    }
+
+    state.timerIntervalId = setInterval(handleTimerTick, 200);
+}
+
+function stopTimerLoop() {
+    if (state.timerIntervalId === null) {
+        return;
+    }
+
+    clearInterval(state.timerIntervalId);
+    state.timerIntervalId = null;
+}
+
+function handleTimerTick() {
+    if (state.raceStarted) {
         updateCountdownDisplay();
+        return;
+    }
 
-        // Check if countdown has reached zero
-        const elapsedTime = Date.now() - state.countdownStartTime;
-        if (elapsedTime >= fiveMinutesMs) {
-            // Countdown reached zero, switch to counting up (race time)
-            state.raceStarted = true;
-            clearInterval(timerInterval);
+    if (!state.countdownRunning) {
+        return;
+    }
 
-            console.log('Countdown complete. Race started! Now tracking elapsed time.');
-        }
-    }, 100);
+    const now = Date.now();
+    const elapsedSinceLastTick = now - state.countdownLastTickTime;
+    state.countdownLastTickTime = now;
+
+    state.countdownRemainingMs = Math.max(0, state.countdownRemainingMs - elapsedSinceLastTick);
+
+    if (state.countdownRemainingMs === 0) {
+        state.raceStarted = true;
+        state.countdownRunning = false;
+        state.raceStartTime = now;
+        console.log('Countdown complete. Race started! Now tracking elapsed time.');
+    }
+
+    updateCountdownDisplay();
+    updateCountdownControls();
+}
+
+function canSyncCountdown() {
+    return state.countdownRunning && !state.raceStarted && state.countdownRemainingMs > 60 * 1000;
+}
+
+function updateCountdownControls() {
+    elements.startCountdownBtn.textContent = state.countdownRunning ? 'STOP' : 'START';
+    elements.startCountdownBtn.classList.toggle('stop-mode', state.countdownRunning);
+    elements.startCountdownBtn.disabled = state.raceStarted;
+    elements.syncCountdownBtn.disabled = !canSyncCountdown();
+    elements.resetCountdownBtn.disabled = state.raceStarted || state.countdownRunning;
+}
+
+function formatClockSeconds(totalSeconds) {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
 // =============================================================================
@@ -355,36 +444,15 @@ function startCountdown() {
 // Switches from "MM:SS counting down" to "MM:SS counting up" at T=0
 // =============================================================================
 function updateCountdownDisplay() {
-    // If countdown hasn't been started, show the default 5 minutes
-    if (!state.countdownActive) {
-        elements.timerValue.textContent = '05:00';
+    if (state.raceStarted) {
+        const elapsedSinceStartMs = Date.now() - state.raceStartTime;
+        const elapsedSeconds = Math.floor(elapsedSinceStartMs / 1000);
+        elements.timerValue.textContent = formatClockSeconds(elapsedSeconds);
         return;
     }
 
-    // Calculate how much time has elapsed since countdown started
-    const elapsedMs = Date.now() - state.countdownStartTime;
-    const fiveMinutesMs = 5 * 60 * 1000;
-
-    let displaySeconds;
-
-    // Before T=0: count down (show time remaining)
-    if (!state.raceStarted) {
-        const remainingMs = fiveMinutesMs - elapsedMs;
-        displaySeconds = Math.max(0, Math.ceil(remainingMs / 1000));
-    }
-    // After T=0: count up (show elapsed time since race start)
-    else {
-        const raceElapsedMs = elapsedMs - fiveMinutesMs;
-        displaySeconds = Math.floor(raceElapsedMs / 1000);
-    }
-
-    // Convert total seconds to MM:SS format
-    const minutes = Math.floor(displaySeconds / 60);
-    const seconds = displaySeconds % 60;
-
-    // Format with leading zeros (e.g., "04:32" not "4:32")
-    const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    elements.timerValue.textContent = formattedTime;
+    const countdownSeconds = Math.max(0, Math.ceil(state.countdownRemainingMs / 1000));
+    elements.timerValue.textContent = formatClockSeconds(countdownSeconds);
 }
 
 // =============================================================================
@@ -415,19 +483,19 @@ function updatePositionStatusDisplay() {
     // Update start boat position display
     if (state.startboat) {
         elements.startBoatStatus.textContent = `${state.startboat.lat.toFixed(5)}, ${state.startboat.lon.toFixed(5)}`;
-        elements.startBoatStatus.classList.add('set');
+        elements.markStartBoatBtn.classList.add('marked');
     } else {
-        elements.startBoatStatus.textContent = 'Not set';
-        elements.startBoatStatus.classList.remove('set');
+        elements.startBoatStatus.textContent = 'Tap to save current GPS position';
+        elements.markStartBoatBtn.classList.remove('marked');
     }
 
     // Update line end position display
     if (state.lineEnd) {
         elements.lineEndStatus.textContent = `${state.lineEnd.lat.toFixed(5)}, ${state.lineEnd.lon.toFixed(5)}`;
-        elements.lineEndStatus.classList.add('set');
+        elements.markLineEndBtn.classList.add('marked');
     } else {
-        elements.lineEndStatus.textContent = 'Not set';
-        elements.lineEndStatus.classList.remove('set');
+        elements.lineEndStatus.textContent = 'Tap to save current GPS position';
+        elements.markLineEndBtn.classList.remove('marked');
     }
 }
 

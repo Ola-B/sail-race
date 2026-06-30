@@ -15,20 +15,20 @@
 
         <!-- Control buttons section: allows user to mark start boat position, line end, and start countdown -->
         <section class="controls">
-            <button id="markStartBoatBtn" class="btn">Mark Start Boat</button>
-            <button id="markLineEndBtn" class="btn">Mark Line End</button>
-            <button id="startCountdownBtn" class="btn" disabled>Start Countdown</button>
-        </section>
-
-        <!-- Status indicators showing which positions have been captured -->
-        <section class="position-status">
-            <div class="status-item">
-                <span class="status-label">Start Boat:</span>
-                <span class="status-value" id="startBoatStatus">Not set</span>
+            <div class="controls-row mark-controls">
+                <button id="markStartBoatBtn" class="btn mark-btn">
+                    <span class="btn-title">Mark Start Boat</span>
+                    <span class="btn-meta" id="startBoatStatus">Tap to save current GPS position</span>
+                </button>
+                <button id="markLineEndBtn" class="btn mark-btn">
+                    <span class="btn-title">Mark Line End</span>
+                    <span class="btn-meta" id="lineEndStatus">Tap to save current GPS position</span>
+                </button>
             </div>
-            <div class="status-item">
-                <span class="status-label">Line End:</span>
-                <span class="status-value" id="lineEndStatus">Not set</span>
+            <div class="controls-row countdown-controls">
+                <button id="startCountdownBtn" class="btn">START</button>
+                <button id="syncCountdownBtn" class="btn control-btn" disabled>SYNC</button>
+                <button id="resetCountdownBtn" class="btn control-btn">RESET</button>
             </div>
         </section>
 
@@ -41,6 +41,15 @@
                     <div class="metric-unit">meters</div>
                 </div>
                 <div class="metric-value" id="distanceValue">--</div>
+            </div>
+
+            <!-- Countdown/elapsed time timer - counts down 5 minutes, then counts up after T=0 -->
+            <div class="metric-box timer-box">
+                <div class="metric-header">
+                    <div class="metric-label">Countdown / Elapsed</div>
+                    <div class="metric-unit">MM:SS</div>
+                </div>
+                <div class="metric-value" id="timerValue">05:00</div>
             </div>
 
             <!-- Boat speed in knots - extracted from GPS heading data -->
@@ -59,15 +68,6 @@
                     <div class="metric-unit">degrees</div>
                 </div>
                 <div class="metric-value" id="bearingValue">--</div>
-            </div>
-
-            <!-- Countdown/elapsed time timer - counts down 5 minutes, then counts up after T=0 -->
-            <div class="metric-box timer-box">
-                <div class="metric-header">
-                    <div class="metric-label">Countdown / Elapsed</div>
-                    <div class="metric-unit">MM:SS</div>
-                </div>
-                <div class="metric-value" id="timerValue">05:00</div>
             </div>
         </section>
 
