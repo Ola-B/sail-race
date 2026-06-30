@@ -514,7 +514,7 @@ function updateUIDisplay() {
 
     // Update boat speed display (convert m/s to knots, or show '--' if unavailable)
     if (state.boatSpeed !== null) {
-        elements.speedValue.textContent = state.boatSpeed.toFixed(2);
+        elements.speedValue.textContent = state.boatSpeed.toFixed(1);
     } else {
         elements.speedValue.textContent = '--';
     }
