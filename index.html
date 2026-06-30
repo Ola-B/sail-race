@@ -3,16 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sailing Race Start Line Distance</title>
+    <title>Sail-Race</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <!-- Header section with title -->
         <header>
-            <h1>Sailing Race Start</h1>
-            <!-- GPS status indicator showing whether location services are ready, acquiring, or in error -->
-            <div class="gps-status" id="gpsStatus">Status: Initializing...</div>
+            <h1>Sail-Race</h1>
         </header>
 
         <!-- Control buttons section: allows user to mark start boat position, line end, and start countdown -->
@@ -38,38 +36,51 @@
         <section class="metrics-container">
             <!-- Distance to startline - the primary metric, displayed prominently in the center -->
             <div class="metric-box distance-box">
-                <div class="metric-label">Distance to Startline</div>
+                <div class="metric-header">
+                    <div class="metric-label">Distance to Startline</div>
+                    <div class="metric-unit">meters</div>
+                </div>
                 <div class="metric-value" id="distanceValue">--</div>
-                <div class="metric-unit">meters</div>
             </div>
 
             <!-- Boat speed in knots - extracted from GPS heading data -->
             <div class="metric-box">
-                <div class="metric-label">Boat Speed</div>
+                <div class="metric-header">
+                    <div class="metric-label">Boat Speed</div>
+                    <div class="metric-unit">knots</div>
+                </div>
                 <div class="metric-value" id="speedValue">--</div>
-                <div class="metric-unit">knots</div>
             </div>
 
             <!-- Bearing/heading in degrees - extracted from GPS heading data -->
             <div class="metric-box">
-                <div class="metric-label">Bearing</div>
+                <div class="metric-header">
+                    <div class="metric-label">Bearing</div>
+                    <div class="metric-unit">degrees</div>
+                </div>
                 <div class="metric-value" id="bearingValue">--</div>
-                <div class="metric-unit">degrees</div>
             </div>
 
             <!-- Countdown/elapsed time timer - counts down 5 minutes, then counts up after T=0 -->
             <div class="metric-box timer-box">
-                <div class="metric-label">Countdown / Elapsed</div>
+                <div class="metric-header">
+                    <div class="metric-label">Countdown / Elapsed</div>
+                    <div class="metric-unit">MM:SS</div>
+                </div>
                 <div class="metric-value" id="timerValue">05:00</div>
-                <div class="metric-unit">MM:SS</div>
             </div>
         </section>
 
-        <!-- Debug/info section: shows current GPS coordinates for reference -->
-        <section class="info-section">
+        <!-- Footer status panel: shows GPS state and current position at the bottom of the app -->
+        <section class="info-section status-footer">
+            <div class="info-item">
+                <span class="info-label">GPS Status:</span>
+                <span class="gps-status" id="gpsStatus">Status: Initializing...</span>
+            </div>
             <div class="info-item">
                 <span class="info-label">Current Position:</span>
                 <span class="info-value" id="currentPosInfo">Acquiring...</span>
+                <span class="info-meta" id="lastPositionTime">Last fix: --:--:--</span>
             </div>
         </section>
     </div>

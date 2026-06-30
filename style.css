@@ -27,12 +27,15 @@ body {
     max-width: 500px;
     width: 100%;
     padding: 30px;
+    min-height: calc(100vh - 40px);
+    display: flex;
+    flex-direction: column;
 }
 
 /* Header section styling */
 header {
     text-align: center;
-    margin-bottom: 30px;
+    margin-bottom: 24px;
 }
 
 header h1 {
@@ -49,6 +52,7 @@ header h1 {
     background: #f0f0f0;
     border-radius: 4px;
     display: inline-block;
+    align-self: flex-start;
 }
 
 .gps-status.ready {
@@ -154,10 +158,14 @@ header h1 {
 .metric-box {
     background: #f8f9fa;
     border-radius: 8px;
-    padding: 20px;
+    padding: 14px 16px;
     text-align: center;
     border-left: 4px solid #667eea;
     transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 132px;
 }
 
 .metric-box:hover {
@@ -169,8 +177,9 @@ header h1 {
     grid-column: 1 / -1;
     border-left: 6px solid #ff6b6b;
     background: linear-gradient(135deg, #fff5f5 0%, #ffe3e3 100%);
-    padding: 30px;
+    padding: 20px 22px;
     margin-bottom: 10px;
+    min-height: 168px;
 }
 
 /* Timer box styling */
@@ -179,26 +188,36 @@ header h1 {
 }
 
 /* Label for each metric (Distance, Speed, Bearing, etc.) */
+.metric-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
 .metric-label {
-    font-size: 12px;
+    font-size: 11px;
     color: #666;
     font-weight: bold;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 8px;
+    letter-spacing: 0.8px;
+    text-align: left;
 }
 
 /* Main value display for metrics */
 .metric-value {
-    font-size: 32px;
+    font-size: clamp(2.25rem, 7vw, 3rem);
     font-weight: bold;
     color: #333;
-    margin-bottom: 4px;
     font-family: 'Courier New', monospace;
+    line-height: 1;
+    margin-top: auto;
+    margin-bottom: auto;
 }
 
 .distance-box .metric-value {
-    font-size: 48px;
+    font-size: clamp(3rem, 11vw, 4.5rem);
     color: #ff6b6b;
 }
 
@@ -208,9 +227,10 @@ header h1 {
 
 /* Unit labels (meters, knots, degrees, MM:SS) */
 .metric-unit {
-    font-size: 11px;
+    font-size: 10px;
     color: #999;
     text-transform: uppercase;
+    white-space: nowrap;
 }
 
 /* Info section - debug/reference information */
@@ -220,6 +240,19 @@ header h1 {
     border-radius: 6px;
     margin-top: 15px;
     border-top: 2px solid #e9ecef;
+}
+
+.status-footer {
+    margin-top: auto;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 16px;
+}
+
+.status-footer .info-item:last-child {
+    align-items: flex-end;
+    text-align: right;
 }
 
 .info-item {
@@ -241,10 +274,17 @@ header h1 {
     word-break: break-all;
 }
 
+.info-meta {
+    color: #666;
+    font-size: 11px;
+    font-family: monospace;
+}
+
 /* Responsive design for smaller screens */
 @media (max-width: 480px) {
     .container {
         padding: 20px;
+        min-height: calc(100vh - 40px);
     }
 
     header h1 {
@@ -264,10 +304,31 @@ header h1 {
     }
 
     .metric-value {
-        font-size: 24px;
+        font-size: clamp(2.5rem, 12vw, 4rem);
     }
 
     .distance-box .metric-value {
-        font-size: 36px;
+        font-size: clamp(3.25rem, 15vw, 5rem);
+    }
+
+    .metric-box {
+        min-height: 118px;
+    }
+
+    .distance-box {
+        min-height: 150px;
+    }
+
+    .metric-header {
+        margin-bottom: 8px;
+    }
+
+    .metric-label {
+        font-size: 10px;
+        letter-spacing: 0.6px;
+    }
+
+    .metric-unit {
+        font-size: 9px;
     }
 }

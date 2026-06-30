@@ -38,6 +38,9 @@ const state = {
     // GPS status: 'initializing', 'acquiring', 'ready', or 'error'
     gpsStatus: 'initializing',
 
+    // Timestamp of the last successful GPS position fix
+    lastPositionTimestamp: null,
+
     // Geolocation watchId (needed to stop watching GPS updates)
     watchId: null
 };
@@ -57,6 +60,7 @@ const elements = {
     startBoatStatus: document.getElementById('startBoatStatus'),
     lineEndStatus: document.getElementById('lineEndStatus'),
     currentPosInfo: document.getElementById('currentPosInfo'),
+    lastPositionTime: document.getElementById('lastPositionTime'),
 
     // Metric value displays
     distanceValue: document.getElementById('distanceValue'),
@@ -133,6 +137,7 @@ function onPositionSuccess(position) {
         lat: coords.latitude,
         lon: coords.longitude
     };
+    state.lastPositionTimestamp = position.timestamp || Date.now();
 
     // Extract boat speed from GPS (in m/s, convert to knots: m/s ÷ 0.51444)
     // If GPS doesn't provide speed data, set to null
@@ -461,6 +466,17 @@ function updateUIDisplay() {
         elements.currentPosInfo.textContent = `${state.currentPosition.lat.toFixed(6)}, ${state.currentPosition.lon.toFixed(6)}`;
     } else {
         elements.currentPosInfo.textContent = 'Acquiring...';
+    }
+
+    if (state.lastPositionTimestamp) {
+        const lastFixTime = new Date(state.lastPositionTimestamp);
+        elements.lastPositionTime.textContent = `Last fix: ${lastFixTime.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        })}`;
+    } else {
+        elements.lastPositionTime.textContent = 'Last fix: --:--:--';
     }
 }
 
