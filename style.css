@@ -70,6 +70,38 @@ header h1 {
     color: #856404;
 }
 
+.quality-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.quality-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    display: inline-block;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15) inset;
+}
+
+.quality-dot.green {
+    background: #2f9e44;
+}
+
+.quality-dot.yellow {
+    background: #e67700;
+}
+
+.quality-dot.red {
+    background: #c92a2a;
+}
+
+.quality-text {
+    color: #555;
+    font-size: 11px;
+}
+
 /* Control buttons section */
 .controls {
     display: grid;

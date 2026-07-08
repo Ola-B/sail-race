@@ -26,6 +26,30 @@ const state = {
     // Boat heading/bearing from GPS data (in degrees, 0-360)
     bearing: null,
 
+    // Raw GPS speed and bearing values used for diagnostics and trust checks
+    gpsBoatSpeed: null,
+    gpsBearing: null,
+
+    // Sliding-window speed and bearing derived from recent positions
+    derivedBoatSpeed: null,
+    derivedBearing: null,
+
+    // Last observed GPS position accuracy in meters (95% confidence radius)
+    positionAccuracyM: null,
+
+    // Circular buffer of recent position fixes for boxcar-style motion estimates
+    positionHistory: [],
+
+    // Tracking for frozen-heading detection
+    lastRawBearing: null,
+    lastRawBearingChangeTime: null,
+
+    // Quality indicators shown in UI
+    gpsQualityLevel: 'yellow',
+    gpsQualityText: 'GPS quality: Waiting for fix',
+    motionQualityLevel: 'yellow',
+    motionQualityText: 'Motion trust: Waiting for data',
+
     // Remaining countdown time before start (milliseconds)
     countdownRemainingMs: 5 * 60 * 1000,
 
@@ -51,8 +75,25 @@ const state = {
     watchId: null,
 
     // Interval ID used to update countdown/elapsed timer
-    timerIntervalId: null
+    timerIntervalId: null,
+
+    // Interval ID used to refresh data quality state even if no new GPS fix arrives
+    qualityIntervalId: null
 };
+
+const KNOTS_PER_MPS = 1 / 0.51444;
+const MOTION_WINDOW_MAX_POINTS = 8;
+const MOTION_WINDOW_MIN_POINTS = 3;
+const MIN_TRUSTED_SPEED_FOR_BEARING_KNOTS = 1.2;
+const FRESH_FIX_GREEN_MS = 3000;
+const FRESH_FIX_RED_MS = 10000;
+const ACCURACY_GREEN_M = 15;
+const ACCURACY_RED_M = 35;
+const MAX_SPEED_DELTA_KNOTS = 2.0;
+const MAX_SPEED_DELTA_RATIO = 0.45;
+const MAX_BEARING_DELTA_DEG = 35;
+const HEADING_FREEZE_MS = 5000;
+const HEADING_TURN_RATE_ALERT_DEG_PER_SEC = 18;
 
 // =============================================================================
 // DOM ELEMENT REFERENCES
@@ -68,6 +109,10 @@ const elements = {
 
     // Status displays
     gpsStatus: document.getElementById('gpsStatus'),
+    gpsQualityDot: document.getElementById('gpsQualityDot'),
+    gpsQualityText: document.getElementById('gpsQualityText'),
+    motionQualityDot: document.getElementById('motionQualityDot'),
+    motionQualityText: document.getElementById('motionQualityText'),
     startBoatStatus: document.getElementById('startBoatStatus'),
     lineEndStatus: document.getElementById('lineEndStatus'),
     currentPosInfo: document.getElementById('currentPosInfo'),
@@ -98,12 +143,26 @@ function initializeApp() {
     // Start continuous GPS tracking
     initializeGPSTracking();
 
+    // Refresh quality indicators even if GPS updates pause, so stale data turns red.
+    startQualityLoop();
+
     // Initialize button state before any positions have been marked
     updatePositionStatusDisplay();
     updateCountdownDisplay();
     updateCountdownControls();
 
     console.log('App initialization complete');
+}
+
+function startQualityLoop() {
+    if (state.qualityIntervalId !== null) {
+        return;
+    }
+
+    state.qualityIntervalId = setInterval(function () {
+        refreshDataQuality();
+        updateUIDisplay();
+    }, 1000);
 }
 
 // =============================================================================
@@ -156,14 +215,30 @@ function onPositionSuccess(position) {
         lon: coords.longitude
     };
     state.lastPositionTimestamp = position.timestamp || Date.now();
+    state.positionAccuracyM = typeof coords.accuracy === 'number' ? coords.accuracy : null;
+
+    addPositionToHistory({
+        lat: state.currentPosition.lat,
+        lon: state.currentPosition.lon,
+        timestamp: state.lastPositionTimestamp
+    });
 
     // Extract boat speed from GPS (in m/s, convert to knots: m/s ÷ 0.51444)
     // If GPS doesn't provide speed data, set to null
-    state.boatSpeed = coords.speed !== null ? coords.speed / 0.51444 : null;
+    state.gpsBoatSpeed = coords.speed !== null ? coords.speed * KNOTS_PER_MPS : null;
 
     // Extract bearing/heading from GPS (in degrees, 0-360)
     // If GPS doesn't provide heading, set to null
-    state.bearing = coords.heading !== null ? coords.heading : null;
+    state.gpsBearing = coords.heading !== null ? normalizeBearing(coords.heading) : null;
+
+    trackRawBearingChanges();
+
+    const derivedMotion = calculateDerivedMotionFromHistory();
+    state.derivedBoatSpeed = derivedMotion ? derivedMotion.speedKnots : null;
+    state.derivedBearing = derivedMotion ? derivedMotion.bearingDeg : null;
+
+    applyMotionTrustFiltering(derivedMotion);
+    refreshDataQuality(derivedMotion);
 
     // Update GPS status to "ready" since we have successfully acquired position
     if (state.gpsStatus !== 'ready') {
@@ -181,9 +256,274 @@ function onPositionSuccess(position) {
     console.log('GPS Update:', {
         lat: state.currentPosition.lat.toFixed(6),
         lon: state.currentPosition.lon.toFixed(6),
-        speed: state.boatSpeed ? state.boatSpeed.toFixed(2) : 'N/A',
-        bearing: state.bearing ? state.bearing.toFixed(0) : 'N/A'
+        accuracyM: state.positionAccuracyM !== null ? state.positionAccuracyM.toFixed(1) : 'N/A',
+        gpsSpeed: state.gpsBoatSpeed !== null ? state.gpsBoatSpeed.toFixed(2) : 'N/A',
+        gpsBearing: state.gpsBearing !== null ? state.gpsBearing.toFixed(1) : 'N/A',
+        derivedSpeed: state.derivedBoatSpeed !== null ? state.derivedBoatSpeed.toFixed(2) : 'N/A',
+        derivedBearing: state.derivedBearing !== null ? state.derivedBearing.toFixed(1) : 'N/A',
+        trustedSpeed: state.boatSpeed !== null ? state.boatSpeed.toFixed(2) : 'N/A',
+        trustedBearing: state.bearing !== null ? state.bearing.toFixed(1) : 'N/A'
     });
+}
+
+function normalizeBearing(degrees) {
+    const normalized = ((degrees % 360) + 360) % 360;
+    return normalized === 360 ? 0 : normalized;
+}
+
+function shortestAngularDifference(a, b) {
+    return Math.abs(((a - b + 540) % 360) - 180);
+}
+
+function degreesToRadians(degrees) {
+    return degrees * (Math.PI / 180);
+}
+
+function radiansToDegrees(radians) {
+    return radians * (180 / Math.PI);
+}
+
+function calculateDistanceMeters(pointA, pointB) {
+    const earthRadiusM = 6371000;
+    const lat1 = degreesToRadians(pointA.lat);
+    const lat2 = degreesToRadians(pointB.lat);
+    const deltaLat = degreesToRadians(pointB.lat - pointA.lat);
+    const deltaLon = degreesToRadians(pointB.lon - pointA.lon);
+
+    const sinLat = Math.sin(deltaLat / 2);
+    const sinLon = Math.sin(deltaLon / 2);
+    const a = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return earthRadiusM * c;
+}
+
+function calculateInitialBearing(pointA, pointB) {
+    const lat1 = degreesToRadians(pointA.lat);
+    const lat2 = degreesToRadians(pointB.lat);
+    const deltaLon = degreesToRadians(pointB.lon - pointA.lon);
+
+    const y = Math.sin(deltaLon) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLon);
+
+    return normalizeBearing(radiansToDegrees(Math.atan2(y, x)));
+}
+
+function addPositionToHistory(sample) {
+    state.positionHistory.push(sample);
+    if (state.positionHistory.length > MOTION_WINDOW_MAX_POINTS) {
+        state.positionHistory.shift();
+    }
+}
+
+function calculateDerivedMotionFromHistory() {
+    if (state.positionHistory.length < MOTION_WINDOW_MIN_POINTS) {
+        return null;
+    }
+
+    const points = state.positionHistory;
+    const firstPoint = points[0];
+    const lastPoint = points[points.length - 1];
+    const elapsedSeconds = (lastPoint.timestamp - firstPoint.timestamp) / 1000;
+
+    if (elapsedSeconds <= 0.5) {
+        return null;
+    }
+
+    let totalDistanceM = 0;
+    const segmentBearings = [];
+
+    for (let i = 1; i < points.length; i += 1) {
+        const segmentDistance = calculateDistanceMeters(points[i - 1], points[i]);
+        totalDistanceM += segmentDistance;
+        if (segmentDistance >= 2) {
+            segmentBearings.push(calculateInitialBearing(points[i - 1], points[i]));
+        }
+    }
+
+    const speedKnots = (totalDistanceM / elapsedSeconds) * 1.943844;
+    const bearingDeg = calculateInitialBearing(firstPoint, lastPoint);
+
+    let turnRateDegPerSec = 0;
+    if (segmentBearings.length >= 2) {
+        let accumulatedTurn = 0;
+        for (let i = 1; i < segmentBearings.length; i += 1) {
+            accumulatedTurn += shortestAngularDifference(segmentBearings[i], segmentBearings[i - 1]);
+        }
+        turnRateDegPerSec = accumulatedTurn / elapsedSeconds;
+    }
+
+    return {
+        speedKnots,
+        bearingDeg,
+        elapsedSeconds,
+        turnRateDegPerSec
+    };
+}
+
+function trackRawBearingChanges() {
+    if (state.gpsBearing === null) {
+        return;
+    }
+
+    const now = Date.now();
+    if (state.lastRawBearing === null) {
+        state.lastRawBearing = state.gpsBearing;
+        state.lastRawBearingChangeTime = now;
+        return;
+    }
+
+    if (shortestAngularDifference(state.gpsBearing, state.lastRawBearing) > 0.2) {
+        state.lastRawBearing = state.gpsBearing;
+        state.lastRawBearingChangeTime = now;
+    }
+}
+
+function applyMotionTrustFiltering(derivedMotion) {
+    const rawSpeed = state.gpsBoatSpeed;
+    const rawBearing = state.gpsBearing;
+    const derivedSpeed = state.derivedBoatSpeed;
+    const derivedBearing = state.derivedBearing;
+
+    const hasRawSpeed = rawSpeed !== null && Number.isFinite(rawSpeed);
+    const hasRawBearing = rawBearing !== null && Number.isFinite(rawBearing);
+    const hasDerived = derivedMotion && derivedSpeed !== null && derivedBearing !== null;
+
+    const speedDelta = hasRawSpeed && hasDerived
+        ? Math.abs(rawSpeed - derivedSpeed)
+        : null;
+
+    const allowedSpeedDelta = hasDerived
+        ? Math.max(MAX_SPEED_DELTA_KNOTS, derivedSpeed * MAX_SPEED_DELTA_RATIO)
+        : MAX_SPEED_DELTA_KNOTS;
+
+    const speedTrusted = hasRawSpeed && (
+        !hasDerived || speedDelta <= allowedSpeedDelta
+    );
+
+    const bearingDelta = hasRawBearing && hasDerived
+        ? shortestAngularDifference(rawBearing, derivedBearing)
+        : null;
+
+    const sharpTurnDetected = Boolean(derivedMotion) &&
+        derivedMotion.turnRateDegPerSec > HEADING_TURN_RATE_ALERT_DEG_PER_SEC;
+
+    const freezeDetected = Boolean(state.lastRawBearingChangeTime) && Boolean(derivedMotion) &&
+        (Date.now() - state.lastRawBearingChangeTime) > HEADING_FREEZE_MS &&
+        derivedMotion.speedKnots >= MIN_TRUSTED_SPEED_FOR_BEARING_KNOTS &&
+        shortestAngularDifference(rawBearing || 0, derivedBearing || 0) > MAX_BEARING_DELTA_DEG;
+
+    const bearingTrusted = hasRawBearing &&
+        hasRawSpeed &&
+        rawSpeed >= MIN_TRUSTED_SPEED_FOR_BEARING_KNOTS &&
+        !sharpTurnDetected &&
+        !freezeDetected &&
+        (!hasDerived || bearingDelta <= MAX_BEARING_DELTA_DEG);
+
+    if (speedTrusted) {
+        state.boatSpeed = rawSpeed;
+    } else if (!hasRawSpeed && hasDerived) {
+        state.boatSpeed = derivedSpeed;
+    } else {
+        state.boatSpeed = null;
+    }
+
+    if (bearingTrusted) {
+        state.bearing = rawBearing;
+    } else if (!hasRawBearing && hasDerived && derivedSpeed >= MIN_TRUSTED_SPEED_FOR_BEARING_KNOTS) {
+        state.bearing = derivedBearing;
+    } else {
+        state.bearing = null;
+    }
+
+    if (state.gpsQualityLevel === 'red') {
+        state.boatSpeed = null;
+        state.bearing = null;
+    }
+
+    if (state.gpsQualityLevel === 'red') {
+        state.motionQualityLevel = 'red';
+        state.motionQualityText = 'Motion trust: Bad (GPS lock/freshness issue)';
+        return;
+    }
+
+    if (state.boatSpeed !== null && state.bearing !== null) {
+        state.motionQualityLevel = 'green';
+        state.motionQualityText = 'Motion trust: Good';
+        return;
+    }
+
+    const speedIsBad = state.boatSpeed === null;
+    const bearingIsBad = state.bearing === null;
+
+    if (sharpTurnDetected) {
+        state.motionQualityLevel = 'yellow';
+        state.motionQualityText = 'Motion trust: Caution (sharp turn in window)';
+        return;
+    }
+
+    if (freezeDetected) {
+        state.motionQualityLevel = 'yellow';
+        state.motionQualityText = 'Motion trust: Caution (bearing appears frozen)';
+        return;
+    }
+
+    if (speedIsBad && bearingIsBad) {
+        state.motionQualityLevel = 'yellow';
+        state.motionQualityText = 'Motion trust: Caution (speed/bearing filtered)';
+        return;
+    }
+
+    if (bearingIsBad) {
+        state.motionQualityLevel = 'yellow';
+        state.motionQualityText = 'Motion trust: Caution (bearing filtered)';
+        return;
+    }
+
+    state.motionQualityLevel = 'yellow';
+    state.motionQualityText = 'Motion trust: Caution (speed filtered)';
+}
+
+function refreshDataQuality() {
+    const now = Date.now();
+    const hasFix = state.lastPositionTimestamp !== null;
+    const fixAgeMs = hasFix ? (now - state.lastPositionTimestamp) : Infinity;
+    const accuracyM = state.positionAccuracyM;
+
+    if (!hasFix || state.gpsStatus === 'error' || fixAgeMs > FRESH_FIX_RED_MS) {
+        state.gpsQualityLevel = 'red';
+        state.gpsQualityText = 'GPS quality: Bad (stale or no lock)';
+    } else if (state.gpsStatus !== 'ready') {
+        state.gpsQualityLevel = 'yellow';
+        state.gpsQualityText = 'GPS quality: Acquiring lock';
+    } else if (accuracyM === null) {
+        state.gpsQualityLevel = 'yellow';
+        state.gpsQualityText = 'GPS quality: Unknown accuracy';
+    } else if (accuracyM <= ACCURACY_GREEN_M && fixAgeMs <= FRESH_FIX_GREEN_MS) {
+        state.gpsQualityLevel = 'green';
+        state.gpsQualityText = `GPS quality: Good (accuracy ${accuracyM.toFixed(1)} m)`;
+    } else if (accuracyM >= ACCURACY_RED_M) {
+        state.gpsQualityLevel = 'red';
+        state.gpsQualityText = `GPS quality: Bad (accuracy ${accuracyM.toFixed(1)} m)`;
+    } else {
+        state.gpsQualityLevel = 'yellow';
+        state.gpsQualityText = `GPS quality: Caution (accuracy ${accuracyM.toFixed(1)} m)`;
+    }
+
+    if (state.gpsQualityLevel === 'red') {
+        state.boatSpeed = null;
+        state.bearing = null;
+        state.motionQualityLevel = 'red';
+        state.motionQualityText = 'Motion trust: Bad (GPS lock/freshness issue)';
+    }
+}
+
+function updateQualityIndicators() {
+    elements.gpsQualityText.textContent = state.gpsQualityText;
+    elements.motionQualityText.textContent = state.motionQualityText;
+
+    elements.gpsQualityDot.className = `quality-dot ${state.gpsQualityLevel}`;
+    elements.motionQualityDot.className = `quality-dot ${state.motionQualityLevel}`;
 }
 
 // =============================================================================
@@ -505,6 +845,8 @@ function updatePositionStatusDisplay() {
 // Called on each GPS update to refresh distance, speed, bearing, and other metrics
 // =============================================================================
 function updateUIDisplay() {
+    refreshDataQuality();
+
     // Update distance display
     if (state.distance !== null) {
         elements.distanceValue.textContent = Math.round(state.distance);
@@ -512,16 +854,16 @@ function updateUIDisplay() {
         elements.distanceValue.textContent = '--';
     }
 
-    // Update boat speed display (convert m/s to knots, or show '--' if unavailable)
+    // Update boat speed display with extra precision for debugging
     if (state.boatSpeed !== null) {
-        elements.speedValue.textContent = state.boatSpeed.toFixed(1);
+        elements.speedValue.textContent = state.boatSpeed.toFixed(2);
     } else {
         elements.speedValue.textContent = '--';
     }
 
-    // Update bearing display (show heading in degrees, or '--' if unavailable)
+    // Update bearing display with extra precision for debugging
     if (state.bearing !== null) {
-        elements.bearingValue.textContent = Math.round(state.bearing);
+        elements.bearingValue.textContent = state.bearing.toFixed(1);
     } else {
         elements.bearingValue.textContent = '--';
     }
@@ -546,6 +888,8 @@ function updateUIDisplay() {
     } else {
         elements.lastPositionTime.textContent = 'Last fix: --:--:--';
     }
+
+    updateQualityIndicators();
 }
 
 // =============================================================================

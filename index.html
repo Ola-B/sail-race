@@ -76,6 +76,14 @@
             <div class="info-item">
                 <span class="info-label">GPS Status:</span>
                 <span class="gps-status" id="gpsStatus">Status: Initializing...</span>
+                <div class="quality-row">
+                    <span class="quality-dot yellow" id="gpsQualityDot" aria-hidden="true"></span>
+                    <span class="quality-text" id="gpsQualityText">GPS quality: Waiting for fix</span>
+                </div>
+                <div class="quality-row">
+                    <span class="quality-dot yellow" id="motionQualityDot" aria-hidden="true"></span>
+                    <span class="quality-text" id="motionQualityText">Motion trust: Waiting for data</span>
+                </div>
             </div>
             <div class="info-item">
                 <span class="info-label">Current Position:</span>
