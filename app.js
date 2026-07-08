@@ -20,6 +20,9 @@ const state = {
     // Perpendicular distance from current position to the startline (in meters)
     distance: null,
 
+    // Side of the startline that is treated as pre-start (positive distance)
+    preStartSideSign: null,
+
     // Boat speed extracted from GPS data (in knots)
     boatSpeed: null,
 
@@ -682,6 +685,7 @@ function markStartBoatPosition() {
         lat: state.currentPosition.lat,
         lon: state.currentPosition.lon
     };
+    state.preStartSideSign = null;
 
     console.log('Start boat position marked:', state.startboat);
 
@@ -715,6 +719,7 @@ function markLineEndPosition() {
         lat: state.currentPosition.lat,
         lon: state.currentPosition.lon
     };
+    state.preStartSideSign = null;
 
     console.log('Line end position marked:', state.lineEnd);
 
@@ -773,14 +778,52 @@ function calculateDistanceToStartline() {
         // Convert kilometers to meters.
         const distanceInMeters = distanceInKilometers * 1000;
 
-        // Store calculated distance in state
-        state.distance = distanceInMeters;
+        // Determine which side of the line the boat is currently on.
+        const currentSideSign = calculatePointSideSign(state.startboat, state.lineEnd, state.currentPosition);
 
-        console.log('Distance to startline:', distanceInMeters.toFixed(2), 'meters');
+        // First non-zero side observed after the line is set is treated as pre-start (positive).
+        if (state.preStartSideSign === null && currentSideSign !== 0) {
+            state.preStartSideSign = currentSideSign;
+        }
+
+        let signedDistance = distanceInMeters;
+        if (state.preStartSideSign !== null && currentSideSign !== 0) {
+            signedDistance = currentSideSign === state.preStartSideSign
+                ? distanceInMeters
+                : -distanceInMeters;
+        }
+
+        // Store calculated distance in state
+        state.distance = signedDistance;
+
+        console.log('Distance to startline:', signedDistance.toFixed(2), 'meters');
     } catch (error) {
         console.error('Error calculating distance:', error);
         state.distance = null;
     }
+}
+
+function calculatePointSideSign(lineStart, lineEnd, point) {
+    const originLat = lineStart.lat;
+    const originLon = lineStart.lon;
+    const scaleY = 110540;
+    const scaleX = 111320 * Math.cos(degreesToRadians((lineStart.lat + lineEnd.lat + point.lat) / 3));
+
+    const lineVectorX = (lineEnd.lon - originLon) * scaleX;
+    const lineVectorY = (lineEnd.lat - originLat) * scaleY;
+    const pointVectorX = (point.lon - originLon) * scaleX;
+    const pointVectorY = (point.lat - originLat) * scaleY;
+
+    const cross = (lineVectorX * pointVectorY) - (lineVectorY * pointVectorX);
+    const epsilon = 0.01;
+
+    if (cross > epsilon) {
+        return 1;
+    }
+    if (cross < -epsilon) {
+        return -1;
+    }
+    return 0;
 }
 
 // =============================================================================
