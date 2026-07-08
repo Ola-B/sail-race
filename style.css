@@ -327,6 +327,10 @@ header h1 {
     color: #111;
 }
 
+.metric-value.derived-fallback {
+    color: #c92a2a;
+}
+
 /* Unit labels (meters, knots, degrees, MM:SS) */
 .metric-unit {
     font-size: 10px;

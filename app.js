@@ -34,6 +34,10 @@ const state = {
     derivedBoatSpeed: null,
     derivedBearing: null,
 
+    // Track what is being displayed so fallback values can be styled in red
+    speedDisplaySource: 'none',
+    bearingDisplaySource: 'none',
+
     // Last observed GPS position accuracy in meters (95% confidence radius)
     positionAccuracyM: null,
 
@@ -94,6 +98,10 @@ const MAX_SPEED_DELTA_RATIO = 0.45;
 const MAX_BEARING_DELTA_DEG = 35;
 const HEADING_FREEZE_MS = 5000;
 const HEADING_TURN_RATE_ALERT_DEG_PER_SEC = 18;
+const DERIVED_FALLBACK_MAX_ACCURACY_M = 12;
+const DERIVED_FALLBACK_MIN_SEGMENTS = 3;
+const DERIVED_MAX_SPEED_STDDEV_KNOTS = 1.2;
+const DERIVED_MAX_BEARING_SPREAD_DEG = 28;
 
 // =============================================================================
 // DOM ELEMENT REFERENCES
@@ -332,12 +340,19 @@ function calculateDerivedMotionFromHistory() {
 
     let totalDistanceM = 0;
     const segmentBearings = [];
+    const segmentSpeedsKnots = [];
 
     for (let i = 1; i < points.length; i += 1) {
         const segmentDistance = calculateDistanceMeters(points[i - 1], points[i]);
         totalDistanceM += segmentDistance;
         if (segmentDistance >= 2) {
             segmentBearings.push(calculateInitialBearing(points[i - 1], points[i]));
+        }
+
+        const segmentElapsedSeconds = (points[i].timestamp - points[i - 1].timestamp) / 1000;
+        if (segmentElapsedSeconds > 0.2) {
+            const segmentSpeedKnots = (segmentDistance / segmentElapsedSeconds) * 1.943844;
+            segmentSpeedsKnots.push(segmentSpeedKnots);
         }
     }
 
@@ -353,12 +368,85 @@ function calculateDerivedMotionFromHistory() {
         turnRateDegPerSec = accumulatedTurn / elapsedSeconds;
     }
 
+    const speedStdDevKnots = calculateStdDev(segmentSpeedsKnots);
+    const bearingSpreadDeg = calculateAngularSpread(segmentBearings);
+
     return {
         speedKnots,
         bearingDeg,
         elapsedSeconds,
-        turnRateDegPerSec
+        turnRateDegPerSec,
+        speedStdDevKnots,
+        bearingSpreadDeg,
+        segmentCount: segmentSpeedsKnots.length
     };
+}
+
+function calculateStdDev(values) {
+    if (!values || values.length < 2) {
+        return 0;
+    }
+
+    const mean = values.reduce(function (sum, value) {
+        return sum + value;
+    }, 0) / values.length;
+
+    const variance = values.reduce(function (sum, value) {
+        const delta = value - mean;
+        return sum + (delta * delta);
+    }, 0) / values.length;
+
+    return Math.sqrt(variance);
+}
+
+function calculateAngularSpread(angles) {
+    if (!angles || angles.length < 2) {
+        return 0;
+    }
+
+    let maxGap = 0;
+    const sorted = angles
+        .map(function (angle) {
+            return normalizeBearing(angle);
+        })
+        .sort(function (a, b) {
+            return a - b;
+        });
+
+    for (let i = 1; i < sorted.length; i += 1) {
+        maxGap = Math.max(maxGap, sorted[i] - sorted[i - 1]);
+    }
+    maxGap = Math.max(maxGap, (sorted[0] + 360) - sorted[sorted.length - 1]);
+
+    return 360 - maxGap;
+}
+
+function canUseDerivedFallback(derivedMotion) {
+    if (!derivedMotion) {
+        return false;
+    }
+
+    if (state.gpsQualityLevel === 'red') {
+        return false;
+    }
+
+    if (state.positionAccuracyM === null || state.positionAccuracyM > DERIVED_FALLBACK_MAX_ACCURACY_M) {
+        return false;
+    }
+
+    if (derivedMotion.segmentCount < DERIVED_FALLBACK_MIN_SEGMENTS) {
+        return false;
+    }
+
+    if (derivedMotion.speedStdDevKnots > DERIVED_MAX_SPEED_STDDEV_KNOTS) {
+        return false;
+    }
+
+    if (derivedMotion.bearingSpreadDeg > DERIVED_MAX_BEARING_SPREAD_DEG) {
+        return false;
+    }
+
+    return true;
 }
 
 function trackRawBearingChanges() {
@@ -388,6 +476,10 @@ function applyMotionTrustFiltering(derivedMotion) {
     const hasRawSpeed = rawSpeed !== null && Number.isFinite(rawSpeed);
     const hasRawBearing = rawBearing !== null && Number.isFinite(rawBearing);
     const hasDerived = derivedMotion && derivedSpeed !== null && derivedBearing !== null;
+    const derivedFallbackAllowed = canUseDerivedFallback(derivedMotion);
+
+    state.speedDisplaySource = 'none';
+    state.bearingDisplaySource = 'none';
 
     const speedDelta = hasRawSpeed && hasDerived
         ? Math.abs(rawSpeed - derivedSpeed)
@@ -422,23 +514,39 @@ function applyMotionTrustFiltering(derivedMotion) {
 
     if (speedTrusted) {
         state.boatSpeed = rawSpeed;
-    } else if (!hasRawSpeed && hasDerived) {
+        state.speedDisplaySource = 'gps';
+    } else if (!hasRawSpeed && hasDerived && derivedFallbackAllowed) {
         state.boatSpeed = derivedSpeed;
+        state.speedDisplaySource = 'derived';
     } else {
         state.boatSpeed = null;
     }
 
     if (bearingTrusted) {
         state.bearing = rawBearing;
-    } else if (!hasRawBearing && hasDerived && derivedSpeed >= MIN_TRUSTED_SPEED_FOR_BEARING_KNOTS) {
+        state.bearingDisplaySource = 'gps';
+    } else if (!hasRawBearing && hasDerived && derivedFallbackAllowed && derivedSpeed >= MIN_TRUSTED_SPEED_FOR_BEARING_KNOTS) {
         state.bearing = derivedBearing;
+        state.bearingDisplaySource = 'derived';
     } else {
         state.bearing = null;
+    }
+
+    if (!speedTrusted && hasDerived && derivedFallbackAllowed) {
+        state.boatSpeed = derivedSpeed;
+        state.speedDisplaySource = 'derived';
+    }
+
+    if (!bearingTrusted && hasDerived && derivedFallbackAllowed && derivedSpeed >= MIN_TRUSTED_SPEED_FOR_BEARING_KNOTS) {
+        state.bearing = derivedBearing;
+        state.bearingDisplaySource = 'derived';
     }
 
     if (state.gpsQualityLevel === 'red') {
         state.boatSpeed = null;
         state.bearing = null;
+        state.speedDisplaySource = 'none';
+        state.bearingDisplaySource = 'none';
     }
 
     if (state.gpsQualityLevel === 'red') {
@@ -448,8 +556,13 @@ function applyMotionTrustFiltering(derivedMotion) {
     }
 
     if (state.boatSpeed !== null && state.bearing !== null) {
-        state.motionQualityLevel = 'green';
-        state.motionQualityText = 'Motion trust: Good';
+        if (state.speedDisplaySource === 'derived' || state.bearingDisplaySource === 'derived') {
+            state.motionQualityLevel = 'yellow';
+            state.motionQualityText = 'Motion trust: Caution (showing derived fallback in red)';
+        } else {
+            state.motionQualityLevel = 'green';
+            state.motionQualityText = 'Motion trust: Good';
+        }
         return;
     }
 
@@ -470,7 +583,11 @@ function applyMotionTrustFiltering(derivedMotion) {
 
     if (speedIsBad && bearingIsBad) {
         state.motionQualityLevel = 'yellow';
-        state.motionQualityText = 'Motion trust: Caution (speed/bearing filtered)';
+        if (hasDerived && !derivedFallbackAllowed) {
+            state.motionQualityText = 'Motion trust: Caution (derived data too variable to show)';
+        } else {
+            state.motionQualityText = 'Motion trust: Caution (speed/bearing filtered)';
+        }
         return;
     }
 
@@ -513,6 +630,8 @@ function refreshDataQuality() {
     if (state.gpsQualityLevel === 'red') {
         state.boatSpeed = null;
         state.bearing = null;
+        state.speedDisplaySource = 'none';
+        state.bearingDisplaySource = 'none';
         state.motionQualityLevel = 'red';
         state.motionQualityText = 'Motion trust: Bad (GPS lock/freshness issue)';
     }
@@ -860,6 +979,7 @@ function updateUIDisplay() {
     } else {
         elements.speedValue.textContent = '--';
     }
+    elements.speedValue.classList.toggle('derived-fallback', state.speedDisplaySource === 'derived');
 
     // Update bearing display with extra precision for debugging
     if (state.bearing !== null) {
@@ -867,6 +987,7 @@ function updateUIDisplay() {
     } else {
         elements.bearingValue.textContent = '--';
     }
+    elements.bearingValue.classList.toggle('derived-fallback', state.bearingDisplaySource === 'derived');
 
     // Update timer display (handles countdown → elapsed time transition)
     updateCountdownDisplay();
